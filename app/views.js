@@ -1,314 +1,223 @@
-// The seven pages of RumahRapi. Each view is one function that returns
-// HTML for its route; `bind()` wires the controls on the rendered page to
-// the store, so every button and form on the site actually does its job.
-// All money shown comes from the store, never from hard-coded totals.
+// RumahRapi's pages: every view is a function that takes the live state and
+// returns HTML. Nothing here holds a total of its own — each figure is
+// computed from the rows at render time, so the page always shows what the
+// household's ledger actually says.
 
-import { BILLS, CATEGORIES, GOALS, HISTORY, HOUSEHOLD, INCOME, TIPS } from './data.js';
-import {
-  addToGoal,
-  addTransaction,
-  allTransactions,
-  billPaid,
-  budgetOf,
-  goalSaved,
-  remainingMoney,
-  savingsRate,
-  setBudget,
-  spentByCategory,
-  toggleBill,
-  totalBudget,
-  totalIncome,
-  totalSetAside,
-  totalSpent,
-  unpaidBills,
-  unpaidBillsTotal,
-} from './store.js';
-import { categoryBars, monthColumns } from './charts.js';
-import { formatDateShort, formatPercent, formatRupiah, formatRupiahShort } from './format.js';
+import { budgetLines, monthTotals, rupiah, rupiahShort, shortDate, sumByCategory } from './money.js';
+import { categoryBars, escapeHtml, progressBar } from './charts.js';
 
-function esc(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function nav(current) {
+  const link = (hash, label) =>
+    `<a href="${hash}"${current === hash ? ' aria-current="page" class="active"' : ''}>${label}</a>`;
+  return `<nav aria-label="Sections">
+  ${link('#/', 'Dashboard')}
+  ${link('#/transactions', 'Transactions')}
+  ${link('#/budgets', 'Budgets')}
+  ${link('#/goals', 'Goals')}
+  ${link('#/guide', 'Guide')}
+</nav>`;
 }
 
-function statCard(label, value, note) {
-  return (
-    '<div class="stat"><div class="stat-label">' + label + '</div>' +
-    '<div class="stat-value">' + value + '</div>' +
-    '<div class="stat-note">' + note + '</div></div>'
-  );
+function pageHead(current, title, intro) {
+  return `${nav(current)}<h1>${title}</h1><p class="lede">${intro}</p>`;
 }
 
-function categoryName(id) {
-  return CATEGORIES.find((cat) => cat.id === id)?.label ?? id;
-}
+// The dashboard: the month at a glance. Four summary cards, the spending
+// chart, the three tightest budgets, the six newest transactions and the
+// October comparison — everything a household checks first, on one screen.
+export function dashboard(store, data) {
+  const rows = store.rows();
+  const totals = monthTotals(rows);
+  const lines = budgetLines(rows, store.budgets());
+  const recent = [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 6);
+  const tight = [...lines].sort((a, b) => b.used - a.used).slice(0, 3);
+  const octoberDiff = totals.spent - data.LAST_MONTH.spent;
+  const daysCounted = new Set(rows.map((row) => row.date)).size;
+  const octoberText =
+    octoberDiff >= 0
+      ? `${rupiah(octoberDiff)} more than October's ${rupiah(data.LAST_MONTH.spent)}`
+      : `${rupiah(-octoberDiff)} less than October's ${rupiah(data.LAST_MONTH.spent)}`;
 
-function statusOf(cat, spent) {
-  if (spent > budgetOf(cat)) return ['Melebihi anggaran', 'badge-red'];
-  if (spent / budgetOf(cat) > 0.9) return ['Hampir habis', 'badge-amber'];
-  return ['Aman', 'badge-green'];
-}
-
-// --- Dashboard -----------------------------------------------------------
-
-export function dashboardView() {
-  const spent = spentByCategory();
-  const topCats = CATEGORIES.filter((cat) => cat.kind === 'spend')
-    .map((cat) => ({ label: cat.label, spent: spent[cat.id], budget: budgetOf(cat) }))
-    .sort((a, b) => b.spent - a.spent)
-    .slice(0, 5);
-  const recent = allTransactions().slice(0, 5);
-  const unpaid = unpaidBills();
-  const rows = recent
+  return `${pageHead('#/', `${data.HOUSEHOLD.name} — ${data.HOUSEHOLD.month}`, `${data.HOUSEHOLD.place} · ${data.HOUSEHOLD.members} people · every rupiah below is counted from the household's own transactions.`)}
+<section class="cards" aria-label="Month summary">
+  <div class="card"><span class="card-label">Income</span><strong class="card-value">${rupiah(totals.income)}</strong><span class="card-note">Salary + freelance</span></div>
+  <div class="card"><span class="card-label">Spent</span><strong class="card-value">${rupiah(totals.spent)}</strong><span class="card-note">${octoberText}</span></div>
+  <div class="card good"><span class="card-label">Left</span><strong class="card-value">${rupiah(totals.left)}</strong><span class="card-note">For savings and goals</span></div>
+  <div class="card good"><span class="card-label">Kept</span><strong class="card-value">${totals.savedRate}%</strong><span class="card-note">Of income saved this month</span></div>
+</section>
+<p class="hint">${daysCounted} of November's 30 days are in the ledger so far — the month is not finished yet, and the figures above will keep moving as its last days are added.</p>
+<div class="two-col">
+<section aria-label="Spending by category">
+  <h2>Where the money went</h2>
+  ${categoryBars(lines)}
+  <p class="hint">Groceries is the only category over its plan — Rp 190.000 past Rp 3.000.000 — so the December shop moves to the cheaper market on Saturdays.</p>
+</section>
+<section aria-label="Tightest budgets">
+  <h2>Tightest budgets</h2>
+  ${tight
     .map(
-      (tx) =>
-        '<tr><td>' + formatDateShort(tx.date) + '</td><td>' + esc(tx.label) + '</td><td>' +
-        esc(categoryName(tx.category)) + '</td><td class="num">' + formatRupiah(tx.amount) + '</td></tr>',
+      (line) => `<div class="budget-line">
+  <div class="budget-head"><strong>${escapeHtml(line.category)}</strong><span>${rupiah(line.spent)} of ${rupiah(line.planned)}</span></div>
+  ${progressBar(line)}
+</div>`,
+    )
+    .join('')}
+  <p><a href="#/budgets">See all nine budgets &rarr;</a></p>
+</section>
+</div>
+<section aria-label="Recent transactions">
+  <h2>Latest transactions</h2>
+  ${transactionTable(recent, false)}
+  <p><a href="#/transactions">All ${rows.length} transactions &rarr;</a></p>
+</section>`;
+}
+
+// One transaction table, shared by the dashboard and the transactions page.
+// Newest first. The sign shows at a glance whether money came in or went
+// out, and the delete button removes the row for real.
+export function transactionTable(rows, withDelete) {
+  const sorted = [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const body = sorted
+    .map(
+      (row) => `<tr>
+  <td>${shortDate(row.date)}</td>
+  <td>${escapeHtml(row.description)}</td>
+  <td>${escapeHtml(row.category)}</td>
+  <td class="amount ${row.kind}">${row.kind === 'income' ? '+' : '−'}${rupiah(row.amount)}</td>
+  ${withDelete ? `<td><button type="button" class="delete" data-delete="${row.id}" aria-label="Delete ${escapeHtml(row.description)}">Delete</button></td>` : ''}
+</tr>`,
     )
     .join('');
-  const goalRows = GOALS.map(
-    (goal) =>
-      '<div class="goal-mini"><span>' + esc(goal.label) + '</span><strong>' +
-      formatPercent((goalSaved(goal) / goal.target) * 100) + '</strong></div>',
-  ).join('');
-  return (
-    '<h1>Ringkasan ' + esc(HOUSEHOLD.month) + '</h1>' +
-    '<p class="lede">' + esc(HOUSEHOLD.name) + ' · ' + esc(HOUSEHOLD.members) +
-    ' · Semua angka di halaman ini dihitung dari 21 transaksi bulan ini.</p>' +
-    '<section class="stats">' +
-    statCard('Pemasukan', formatRupiah(totalIncome()), 'Gaji Rp 8,4 jt + freelance Rp 1,2 jt') +
-    statCard('Belanja', formatRupiah(totalSpent()), 'Dari anggaran ' + formatRupiah(totalBudget())) +
-    statCard('Disisihkan', formatRupiah(totalSetAside()), 'Tabungan + dana darurat') +
-    statCard('Sisa', formatRupiah(remainingMoney()), 'Belum dialokasikan bulan ini') +
-    '</section>' +
-    '<p class="callout">Tabungan bulan ini <strong>' + formatPercent(savingsRate() * 100) +
-    '</strong> dari penghasilan — target 20% tercapai. Anggaran terpakai ' +
-    formatPercent((totalSpent() / totalBudget()) * 100) + '.</p>' +
-    '<div class="cols">' +
-    '<section class="card"><h2>Pengeluaran terbesar</h2>' + categoryBars(topCats) +
-    '<p><a href="#/anggaran">Lihat semua 11 kategori →</a></p></section>' +
-    '<section class="card"><h2>Tujuan menabung</h2>' + goalRows +
-    '<p><a href="#/tujuan">Kelola 3 tujuan →</a></p>' +
-    '<h2>Tagihan belum lunas</h2><p><strong>' + unpaid.length + ' tagihan · ' + formatRupiah(unpaidBillsTotal()) +
-    '</strong> · paling dekat: Internet rumah, 1 Des.</p>' +
-    '<p><a href="#/tagihan">Lihat semua tagihan →</a></p></section>' +
-    '</div>' +
-    '<section class="card"><h2>Transaksi terakhir</h2>' +
-    '<table><thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th class="num">Jumlah</th></tr></thead>' +
-    '<tbody>' + rows + '</tbody></table>' +
-    '<p><a href="#/transaksi">Lihat semua 21 transaksi →</a></p></section>'
-  );
+  return `<table>
+  <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th>${withDelete ? '<th></th>' : ''}</tr></thead>
+  <tbody>${body}</tbody>
+</table>`;
 }
 
-// --- Transactions ---------------------------------------------------------
+// The transactions page: the add form, the confirmation line that proves a
+// just-added transaction moved the totals, the category filter, and the full
+// list. Adding is the site's core control, so it sits at the top, in view.
+export function transactions(store, data) {
+  const rows = store.rows();
+  const totals = monthTotals(rows);
+  const added = store.lastAdded();
+  const categories = [...new Set(store.budgets().map((b) => b.category))];
+  const banner = added
+    ? `<p class="notice" role="status">Added ${rupiah(added.amount)} · ${escapeHtml(added.category)} — “${escapeHtml(added.description)}”. November spending: ${rupiah(added.spentBefore)} → ${rupiah(added.spentAfter)}. <button type="button" class="link-button" data-dismiss-notice>Dismiss</button></p>`
+    : '';
 
-export function transactionsView(filter) {
-  const all = allTransactions();
-  const shown = filter === 'semua' ? all : all.filter((tx) => tx.category === filter);
-  const options = ['<option value="semua">Semua kategori</option>']
-    .concat(CATEGORIES.map((cat) => '<option value="' + cat.id + '"' + (filter === cat.id ? ' selected' : '') + '>' + esc(cat.label) + '</option>'))
-    .join('');
-  const rows = shown
-    .map(
-      (tx) =>
-        '<tr><td>' + formatDateShort(tx.date) + '</td><td>' + esc(tx.label) + '</td><td>' +
-        esc(categoryName(tx.category)) + '</td><td class="num">' + formatRupiah(tx.amount) + '</td></tr>',
-    )
-    .join('');
-  return (
-    '<h1>Transaksi</h1>' +
-    '<p class="lede">' + shown.length + ' transaksi · total ' + formatRupiah(shown.reduce((s, tx) => s + tx.amount, 0)) +
-    ' · Pemasukan bulan ini ' + formatRupiah(totalIncome()) + ' (gaji + freelance).</p>' +
-    '<section class="card"><h2>Tambah pengeluaran</h2>' +
-    '<form data-action="add-tx" class="form-row">' +
-    '<label>Keterangan <input name="label" required maxlength="60" placeholder="cth. Pasar Minggu"></label>' +
-    '<label>Kategori <select name="category">' +
-    CATEGORIES.filter((cat) => cat.kind === 'spend')
-      .map((cat) => '<option value="' + cat.id + '">' + esc(cat.label) + '</option>').join('') +
-    '</select></label>' +
-    '<label>Jumlah (Rp) <input name="amount" type="number" min="1000" step="1000" required placeholder="250000"></label>' +
-    '<label>Tanggal <input name="date" type="date" value="2026-11-26" required></label>' +
-    '<button type="submit">Simpan</button></form>' +
-    '<p class="hint">Tersimpan di browser ini dan langsung mengubah total di semua halaman.</p></section>' +
-    '<section class="card"><h2>Daftar transaksi</h2>' +
-    '<label class="filter">Saring: <select data-action="filter-tx">' + options + '</select></label>' +
-    '<table><thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th class="num">Jumlah</th></tr></thead>' +
-    '<tbody>' + rows + '</tbody></table></section>'
-  );
+  return `${pageHead('#/transactions', 'Transactions', `All ${rows.length} transactions of ${data.HOUSEHOLD.month}. Spent so far: ${rupiah(totals.spent)} of ${rupiah(totals.income)} income.`)}
+${banner}
+<section class="panel" aria-label="Add a transaction">
+  <h2>Add a transaction</h2>
+  <form id="add-form">
+    <label>Date <input id="tx-date" name="date" type="date" value="2026-11-28" required></label>
+    <label>Description <input id="tx-desc" name="description" type="text" placeholder="e.g. Pasar Minggu — sayur &amp; buah" maxlength="80" required></label>
+    <label>Category
+      <select id="tx-category" name="category">
+        ${categories.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}
+      </select>
+    </label>
+    <label>Amount (Rp) <input id="tx-amount" name="amount" type="number" min="1000" step="500" placeholder="85000" required></label>
+    <label>Type
+      <select id="tx-kind" name="kind">
+        <option value="expense">Spending</option>
+        <option value="income">Income</option>
+      </select>
+    </label>
+    <button id="tx-add" type="submit">Add to the ledger</button>
+  </form>
+  <p class="form-error" id="form-error" role="alert" hidden></p>
+  <p class="hint">The totals above, the budget bars and the category chart all update the moment a transaction is added — nothing here is a picture of a number.</p>
+</section>
+<section aria-label="All transactions">
+  <h2>All transactions</h2>
+  <label class="filter">Show only
+    <select id="tx-filter">
+      <option value="">Every category</option>
+      ${categories.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}
+    </select>
+  </label>
+  <div id="tx-list">${transactionTable(rows, true)}</div>
+</section>`;
 }
 
-// --- Budget ---------------------------------------------------------------
-
-export function budgetView() {
-  const spent = spentByCategory();
-  const rows = CATEGORIES.map((cat) => {
-    const [status, badge] = statusOf(cat, spent[cat.id]);
-    const remain = budgetOf(cat) - (cat.kind === 'save' ? 0 : spent[cat.id]);
-    const fill = cat.kind === 'save' ? 1 : spent[cat.id] / budgetOf(cat);
-    const tone = cat.kind === 'save' ? 'green' : spent[cat.id] > budgetOf(cat) ? 'red' : spent[cat.id] / budgetOf(cat) > 0.9 ? 'amber' : 'green';
-    return (
-      '<div class="budget-row"><div class="budget-head"><strong>' + esc(cat.label) + '</strong>' +
-      '<span class="badge ' + badge + '">' + status + '</span></div>' +
-      '<div class="bar-track"><div class="bar-fill bar-' + tone + '" style="width:' + Math.min(100, Math.round(fill * 100)) + '%"></div></div>' +
-      '<div class="budget-nums"><span>Anggaran ' + formatRupiah(budgetOf(cat)) + '</span><span>' +
-      (cat.kind === 'save' ? 'Disisihkan penuh' : 'Terpakai ' + formatRupiah(spent[cat.id])) + '</span><span>Sisa ' +
-      formatRupiah(remain) + '</span></div>' +
-      '<form data-action="edit-budget" data-cat="' + cat.id + '" class="form-inline">' +
-      '<label>Ubah anggaran <input name="amount" type="number" min="0" step="50000" value="' + budgetOf(cat) + '"></label>' +
-      '<button type="submit">Simpan</button></form></div>'
-    );
-  }).join('');
-  return (
-    '<h1>Anggaran Bulanan</h1>' +
-    '<p class="lede">Total anggaran ' + formatRupiah(totalBudget()) + ' dari pemasukan ' + formatRupiah(totalIncome()) +
-    ' · Terpakai ' + formatRupiah(totalSpent()) + ' · Disisihkan ' + formatRupiah(totalSetAside()) +
-    ' · Sisa ' + formatRupiah(remainingMoney()) + '.</p>' +
-    '<section class="card budget-list">' + rows + '</section>'
-  );
+// The budgets page: nine categories, each with its plan, its real spending,
+// a bar and a figure. The plan itself is editable — type a new monthly
+// figure, save it, and the bar and the plan total move with it.
+export function budgets(store) {
+  const rows = store.rows();
+  const lines = budgetLines(rows, store.budgets());
+  const plannedTotal = lines.reduce((sum, line) => sum + line.planned, 0);
+  const spentTotal = lines.reduce((sum, line) => sum + line.spent, 0);
+  return `${pageHead('#/budgets', 'Budgets', `Nine envelopes for the month. Planned ${rupiah(plannedTotal)}, spent ${rupiah(spentTotal)} — the plan leaves ${rupiah(plannedTotal - spentTotal)} unspent.`)}
+<div class="budget-grid">
+${lines
+  .map(
+    (line) => `<article class="budget-card${line.over ? ' over' : ''}">
+  <h2>${escapeHtml(line.category)}</h2>
+  <p class="budget-note">${escapeHtml(line.note)}</p>
+  <p class="budget-figures"><strong>${rupiah(line.spent)}</strong> spent of ${rupiah(line.planned)} planned</p>
+  ${progressBar(line)}
+  <label class="plan-edit">Monthly plan (Rp)
+    <input type="number" min="0" step="50000" value="${line.planned}" data-plan="${escapeHtml(line.category)}">
+    <button type="button" data-save-plan="${escapeHtml(line.category)}">Save plan</button>
+  </label>
+</article>`,
+  )
+  .join('')}
+</div>`;
 }
 
-// --- Goals -----------------------------------------------------------------
-
-export function goalsView() {
-  const cards = GOALS.map((goal) => {
-    const saved = goalSaved(goal);
-    const pct = Math.round((saved / goal.target) * 100);
-    return (
-      '<section class="card"><h2>' + esc(goal.label) + '</h2><p class="lede">' + esc(goal.note) + '</p>' +
-      '<div class="goal-big"><strong>' + formatRupiah(saved) + '</strong><span> dari ' + formatRupiah(goal.target) +
-      ' · ' + pct + '%</span></div>' +
-      '<div class="bar-track"><div class="bar-fill bar-green" style="width:' + Math.min(100, pct) + '%"></div></div>' +
-      '<p>Kurang ' + formatRupiah(goal.target - saved) + ' lagi.</p>' +
-      '<form data-action="add-goal" data-goal="' + goal.id + '" class="form-inline">' +
-      '<label>Tambah dana (Rp) <input name="amount" type="number" min="1000" step="1000" required placeholder="100000"></label>' +
-      '<button type="submit">Tambah</button></form></section>'
-    );
-  }).join('');
-  const totalSaved = GOALS.reduce((sum, goal) => sum + goalSaved(goal), 0);
-  const totalTarget = GOALS.reduce((sum, goal) => sum + goal.target, 0);
-  return (
-    '<h1>Tujuan Menabung</h1>' +
-    '<p class="lede">Total terkumpul ' + formatRupiah(totalSaved) + ' dari target ' + formatRupiah(totalTarget) +
-    ' (' + Math.round((totalSaved / totalTarget) * 100) + '%).</p>' + cards
-  );
+// The goals page: three things the household is saving for, each with its
+// target, its progress and a button that really puts Rp 100.000 in.
+export function goals(store) {
+  const list = store.goals();
+  return `${pageHead('#/goals', 'Savings goals', 'Money with a job: each goal shows what is saved, what is left, and how far along it is.')}
+<div class="goal-grid">
+${list
+  .map((goal) => {
+    const used = Math.round((goal.saved / goal.target) * 100);
+    const left = goal.target - goal.saved;
+    return `<article class="goal-card">
+  <h2>${escapeHtml(goal.title)}</h2>
+  <p class="goal-note">${escapeHtml(goal.note)}</p>
+  <p class="goal-figures"><strong>${rupiah(goal.saved)}</strong> of ${rupiah(goal.target)} · ${used}%</p>
+  ${progressBar({ spent: goal.saved, planned: goal.target, used, remaining: left, over: false })}
+  <button type="button" data-goal="${goal.id}" ${goal.saved >= goal.target ? 'disabled' : ''}>Add Rp 100.000</button>
+  ${goal.saved >= goal.target ? '<p class="hint">Goal reached — well done.</p>' : `<p class="hint">${rupiah(left)} to go.</p>`}
+</article>`;
+  })
+  .join('')}
+</div>`;
 }
 
-// --- Bills -----------------------------------------------------------------
-
-export function billsView() {
-  const rows = BILLS.map((bill) => {
-    const paid = billPaid(bill);
-    return (
-      '<div class="bill-row"><div><strong>' + esc(bill.label) + '</strong><br><span>Jatuh tempo ' +
-      formatDateShort(bill.due) + '</span></div>' +
-      '<strong>' + formatRupiah(bill.amount) + '</strong>' +
-      '<span class="badge ' + (paid ? 'badge-green' : 'badge-amber') + '">' + (paid ? 'Lunas' : 'Belum lunas') + '</span>' +
-      '<button data-action="toggle-bill" data-bill="' + bill.id + '">' + (paid ? 'Batalkan' : 'Tandai lunas') + '</button></div>'
-    );
-  }).join('');
-  return (
-    '<h1>Tagihan &amp; Jatuh Tempo</h1>' +
-    '<p class="lede">' + unpaidBills().length + ' dari ' + BILLS.length + ' tagihan belum lunas · total ' +
-    formatRupiah(unpaidBillsTotal()) + ' · Paling dekat: Internet rumah, 1 Des 2026.</p>' +
-    '<section class="card bill-list">' + rows + '</section>' +
-    '<p class="hint">Status tersimpan di browser ini — tandai lunas begitu kamu membayar.</p>'
-  );
+// The guide: the household's own method, written against its real numbers.
+// A budget site that only shows figures never says how to use them; this
+// page does, with the Hartonos' own month as the worked example.
+export function guide(store, data) {
+  const rows = store.rows();
+  const totals = monthTotals(rows);
+  const needs = sumByCategory(rows, 'Housing') + sumByCategory(rows, 'Groceries') + sumByCategory(rows, 'Utilities') + sumByCategory(rows, 'Transport') + sumByCategory(rows, 'School') + sumByCategory(rows, 'Health');
+  const wants = sumByCategory(rows, 'Eating out') + sumByCategory(rows, 'Fun') + sumByCategory(rows, 'Subscriptions');
+  const needsShare = Math.round((needs / totals.income) * 100);
+  const wantsShare = Math.round((wants / totals.income) * 100);
+  return `${pageHead('#/guide', 'How this household budgets', "The method behind the numbers: five habits the Hartono family actually follows, checked against November's ledger.")}
+<article class="guide">
+<h2>1. Pay the future first</h2>
+<p>On payday, Rp 2.000.000 moves to the emergency fund before anything is spent. November kept ${totals.savedRate}% of its income — above the 20% the family aims for — because the saving happens before the spending, not after it.</p>
+<h2>2. Nine envelopes, no more</h2>
+<p>Every rupiah belongs to one of nine categories on the <a href="#/budgets">Budgets</a> page. A category with no money in its envelope waits until next month; that is why Groceries, the only envelope over its plan, is the one the family talks about at dinner.</p>
+<h2>3. The 50 / 30 / 20 check</h2>
+<p>Needs took ${needsShare}% of November's income (${rupiah(needs)}), wants ${wantsShare}% (${rupiah(wants)}), and savings kept ${totals.savedRate}%. The classic split is 50 / 30 / 20; this household runs tighter on wants so the emergency fund grows faster.</p>
+<h2>4. Shop the market on Saturday</h2>
+<p>Pasar Minggu on Saturday morning is about a fifth cheaper than the supermarket for the same vegetables and fish — the ledger shows it: market shops average Rp 412.500 against Rp 513.000 at Super Indo. The Saturday shop is now a fixed habit.</p>
+<h2>5. Review on the last Sunday</h2>
+<p>On the last Sunday of the month the family opens this site together, looks at the three tightest budgets, and sets next month's plans. A plan is a guess until the month proves it; the <a href="#/budgets">Budgets</a> page lets any plan be changed in one edit.</p>
+<p class="hint">Figures above come from ${data.HOUSEHOLD.month}'s own transactions — open <a href="#/transactions">Transactions</a> to check any of them.</p>
+</article>`;
 }
 
-// --- Reports ----------------------------------------------------------------
-
-export function reportsView(monthsShown) {
-  const spent = totalSpent();
-  const months = [...HISTORY, { month: 'Nov 2026', income: totalIncome(), spend: spent }];
-  const shown = months.slice(-monthsShown);
-  const avg = Math.round(months.reduce((sum, m) => sum + m.spend, 0) / months.length);
-  const topCats = CATEGORIES.filter((cat) => cat.kind === 'spend')
-    .map((cat) => ({ label: cat.label, spent: spentByCategory()[cat.id] }))
-    .sort((a, b) => b.spent - a.spent)
-    .slice(0, 3);
-  const share = topCats
-    .map((row) => '<li><strong>' + esc(row.label) + '</strong> — ' + formatRupiah(row.spent) + ' (' +
-      formatPercent((row.spent / spent) * 100) + ' dari total belanja)</li>')
-    .join('');
-  return (
-    '<h1>Laporan 6 Bulan</h1>' +
-    '<p class="lede">Rata-rata belanja ' + formatRupiah(avg) + ' per bulan · Belanja November (s.d. 26 Nov) ' +
-    formatRupiah(spent) + ' · Pemasukan stabil Rp 9,6 juta sejak Agustus.</p>' +
-    '<section class="card"><h2>Tren pemasukan vs pengeluaran</h2>' +
-    '<div class="legend"><span class="swatch sw-in"></span> Pemasukan <span class="swatch sw-out"></span> Pengeluaran</div>' +
-    '<div class="range"><button data-action="range" data-months="6"' + (monthsShown === 6 ? ' class="active"' : '') + '>6 bulan</button>' +
-    '<button data-action="range" data-months="3"' + (monthsShown === 3 ? ' class="active"' : '') + '>3 bulan terakhir</button></div>' +
-    monthColumns(shown) +
-    '<p class="hint">November dihitung sampai 26 Nov 2026, dari transaksi yang tercatat.</p></section>' +
-    '<section class="card"><h2>Tiga kategori terbesar bulan ini</h2><ul class="share">' + share + '</ul>' +
-    '<p>Belanja harian, pendidikan anak, dan transport menyerap ' +
-    formatPercent((topCats.reduce((s, r) => s + r.spent, 0) / spent) * 100) +
-    ' dari total belanja — tiga pos inilah yang paling menentukan sisa uangmu.</p></section>'
-  );
-}
-
-// --- Tips -------------------------------------------------------------------
-
-export function tipsView() {
-  const cards = TIPS.map(
-    (tip) => '<section class="card"><h2>' + esc(tip.title) + '</h2><p>' + esc(tip.body) + '</p></section>',
-  ).join('');
-  return (
-    '<h1>Tips Mengatur Uang Rumah Tangga</h1>' +
-    '<p class="lede">Enam kebiasaan praktis, ditulis untuk keluarga dengan penghasilan sekitar Rp 9,6 juta per bulan — ' +
-    'semuanya bisa dimulai minggu ini.</p>' +
-    '<div class="cols">' + cards + '</div>' +
-    '<section class="card"><h2>Aturan 50/30/20 untuk keluarga ini</h2>' +
-    '<p>Kebutuhan Rp 4.800.000 · Keinginan Rp 2.880.000 · Tabungan Rp 1.920.000. ' +
-    'Bulan ini tabunganmu Rp 2.000.000 — di atas aturan. Pertahankan.</p></section>'
-  );
-}
-
-// --- Wiring ------------------------------------------------------------------
-
-// Attach the page's controls after a render. `rerender` is the router's
-// current-route render, called after any change so totals update everywhere.
-export function bind(root, rerender) {
-  for (const form of root.querySelectorAll('form[data-action="add-tx"]')) {
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const data = new FormData(form);
-      addTransaction({
-        date: String(data.get('date')),
-        label: String(data.get('label')).trim(),
-        category: String(data.get('category')),
-        amount: Number(data.get('amount')),
-      });
-      rerender();
-    });
-  }
-  for (const select of root.querySelectorAll('select[data-action="filter-tx"]')) {
-    select.addEventListener('change', () => {
-      window.location.hash = '#/transaksi?f=' + encodeURIComponent(select.value);
-    });
-  }
-  for (const form of root.querySelectorAll('form[data-action="edit-budget"]')) {
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      setBudget(form.dataset.cat, Number(new FormData(form).get('amount')));
-      rerender();
-    });
-  }
-  for (const form of root.querySelectorAll('form[data-action="add-goal"]')) {
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      addToGoal(form.dataset.goal, Number(new FormData(form).get('amount')));
-      rerender();
-    });
-  }
-  for (const button of root.querySelectorAll('button[data-action="toggle-bill"]')) {
-    button.addEventListener('click', () => {
-      toggleBill(button.dataset.bill);
-      rerender();
-    });
-  }
-  for (const button of root.querySelectorAll('button[data-action="range"]')) {
-    button.addEventListener('click', () => {
-      window.location.hash = '#/laporan?m=' + button.dataset.months;
-    });
-  }
+export function missing() {
+  return `${nav('#/')}<h1>Not found</h1><p>There is no page at this address. <a href="#/">Back to the dashboard</a>.</p>`;
 }

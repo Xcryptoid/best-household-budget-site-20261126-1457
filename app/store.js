@@ -1,113 +1,113 @@
-// Runtime state for RumahRapi: what the household changes in the browser.
-// The static figures in data.js never move; the household's own edits
-// (added transactions, paid bills, changed budgets, goal deposits) live in
-// localStorage, so they survive a reload and never touch the network.
-// Every total the site shows is derived here from data + edits, so no
-// page can disagree with another.
+// RumahRapi's state: the ledger the household actually edits.
+// The seed rows come from data.js; every change after that — an added
+// transaction, a deleted row, a goal contribution, a changed budget plan —
+// lives here, is saved to localStorage when the browser allows it, and is
+// read back on the next visit. If storage is refused (a private window, a
+// locked-down host) the site still works for the visit, in memory only.
 
-import { BILLS, CATEGORIES, GOALS, INCOME, TRANSACTIONS } from './data.js';
+import { BUDGETS, GOALS, TRANSACTIONS } from './data.js';
 
-const KEY = 'rumahrapi-v1';
+const STORAGE_KEY = 'rumahrapi-november-2026';
 
-function readSaved() {
+// A plain copy of the seed, so the module's own edits never touch data.js.
+function freshState() {
+  return {
+    transactions: TRANSACTIONS.map((row) => ({ ...row })),
+    budgets: BUDGETS.map((row) => ({ ...row })),
+    goals: GOALS.map((row) => ({ ...row })),
+    lastAdded: null,
+  };
+}
+
+function loadSaved() {
   try {
-    return JSON.parse(localStorage.getItem(KEY)) ?? {};
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved.transactions) || !Array.isArray(saved.budgets) || !Array.isArray(saved.goals)) return null;
+    return saved;
   } catch {
-    return {};
+    return null;
   }
 }
 
-function writeSaved(saved) {
+function persist(state) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(saved));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
-    // Private mode or no storage: the site still works in memory.
+    // Storage refused: the visit keeps working in memory, nothing breaks.
   }
 }
 
-const saved = readSaved();
-saved.addedTx = saved.addedTx ?? [];
-saved.paidBills = saved.paidBills ?? {};
-saved.budgetEdits = saved.budgetEdits ?? {};
-saved.goalAdds = saved.goalAdds ?? {};
+export const store = {
+  state: loadSaved() ?? freshState(),
 
-export function allTransactions() {
-  return [...TRANSACTIONS, ...saved.addedTx].sort((a, b) => (a.date < b.date ? 1 : -1));
-}
+  rows() {
+    return this.state.transactions;
+  },
 
-export function addTransaction(tx) {
-  saved.addedTx.push({ ...tx, id: 'u' + Date.now() });
-  writeSaved(saved);
-}
+  budgets() {
+    return this.state.budgets;
+  },
 
-export function totalIncome() {
-  return INCOME.reduce((sum, row) => sum + row.amount, 0);
-}
+  goals() {
+    return this.state.goals;
+  },
 
-export function spentByCategory() {
-  const spent = {};
-  for (const cat of CATEGORIES) spent[cat.id] = 0;
-  for (const tx of allTransactions()) {
-    if (spent[tx.category] !== undefined) spent[tx.category] += tx.amount;
-  }
-  return spent;
-}
+  lastAdded() {
+    return this.state.lastAdded;
+  },
 
-export function totalSpent() {
-  return Object.values(spentByCategory()).reduce((sum, n) => sum + n, 0);
-}
+  // Add one transaction and remember what the month's spending was before
+  // it, so the confirmation line can show the old total and the new one
+  // side by side: the proof that the totals really moved.
+  addTransaction({ date, description, category, amount, kind }) {
+    const before = this.state.transactions
+      .filter((r) => r.kind === 'expense')
+      .reduce((sum, r) => sum + r.amount, 0);
+    const row = {
+      id: `u${Date.now().toString(36)}`,
+      date,
+      kind,
+      category,
+      description: description.trim(),
+      amount,
+    };
+    this.state.transactions.push(row);
+    const after = before + (kind === 'expense' ? amount : 0);
+    this.state.lastAdded = { ...row, spentBefore: before, spentAfter: after };
+    persist(this.state);
+    return row;
+  },
 
-export function budgetOf(cat) {
-  return saved.budgetEdits[cat.id] ?? cat.budget;
-}
+  deleteTransaction(id) {
+    this.state.transactions = this.state.transactions.filter((r) => r.id !== id);
+    if (this.state.lastAdded && this.state.lastAdded.id === id) this.state.lastAdded = null;
+    persist(this.state);
+  },
 
-export function setBudget(categoryId, amount) {
-  saved.budgetEdits[categoryId] = amount;
-  writeSaved(saved);
-}
+  // Put Rp 100.000 into a savings goal. The goal's bar and percentage move
+  // with it, and the button stays honest: it never lets a goal pass its target.
+  addToGoal(id, amount) {
+    const goal = this.state.goals.find((g) => g.id === id);
+    if (!goal) return null;
+    goal.saved = Math.min(goal.target, goal.saved + amount);
+    persist(this.state);
+    return goal;
+  },
 
-export function totalBudget() {
-  return CATEGORIES.reduce((sum, cat) => sum + budgetOf(cat), 0);
-}
+  // Change what a category is planned to cost this month. The budget bars
+  // and the plan total re-compute from the new figure at once.
+  setPlan(category, planned) {
+    const budget = this.state.budgets.find((b) => b.category === category);
+    if (!budget) return null;
+    budget.planned = Math.max(0, Math.round(planned));
+    persist(this.state);
+    return budget;
+  },
 
-// Money set aside this month (the "save" categories), not spent.
-export function totalSetAside() {
-  return CATEGORIES.filter((cat) => cat.kind === 'save').reduce((sum, cat) => sum + budgetOf(cat), 0);
-}
-
-export function remainingMoney() {
-  return totalIncome() - totalSpent() - totalSetAside();
-}
-
-export function savingsRate() {
-  return totalSetAside() / totalIncome();
-}
-
-export function goalSaved(goal) {
-  const extra = (saved.goalAdds[goal.id] ?? []).reduce((sum, n) => sum + n, 0);
-  return goal.saved + extra;
-}
-
-export function addToGoal(goalId, amount) {
-  saved.goalAdds[goalId] = [...(saved.goalAdds[goalId] ?? []), amount];
-  writeSaved(saved);
-}
-
-export function billPaid(bill) {
-  return saved.paidBills[bill.id] ?? bill.paid;
-}
-
-export function toggleBill(billId) {
-  const bill = BILLS.find((row) => row.id === billId);
-  if (!bill) return;
-  saved.paidBills[billId] = !billPaid(bill);
-  writeSaved(saved);
-}
-
-export function unpaidBills() {
-  return BILLS.filter((bill) => !billPaid(bill));
-}
-
-export function unpaidBillsTotal() {
-  return unpaidBills().reduce((sum, bill) => sum + bill.amount, 0);
-}
+  clearLastAdded() {
+    this.state.lastAdded = null;
+    persist(this.state);
+  },
+};

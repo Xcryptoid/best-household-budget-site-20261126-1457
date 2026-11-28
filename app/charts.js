@@ -1,56 +1,48 @@
-// Chart builders for RumahRapi: plain HTML bars, no library, no canvas.
-// Bars are divs with a width, so they print and screenshot exactly as the
-// browser lays them out — nothing to redraw, nothing that can fail.
+// Small charts for RumahRapi, drawn as plain SVG strings — no library, no
+// network, nothing to load. A bar chart is a row per category: the bar's
+// length is the share of the biggest spend, the figure sits at its end, and
+// a bar that has passed its plan turns rust red instead of green.
 
-import { formatRupiah, formatRupiahShort } from './format.js';
+import { rupiahShort } from './money.js';
 
-// A horizontal bar row: label, a bar filled to `fraction`, and a value.
-// `tone` picks the bar colour: "green" on track, "amber" nearly full,
-// "red" over budget.
-export function barRow(label, valueText, fraction, tone) {
-  const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
-  return (
-    '<div class="bar-row">' +
-    '<div class="bar-head"><span>' + label + '</span><strong>' + valueText + '</strong></div>' +
-    '<div class="bar-track"><div class="bar-fill bar-' + tone + '" style="width:' + pct + '%"></div></div>' +
-    '</div>'
-  );
+const GREEN = '#1d5c3f';
+const RUST = '#b3401f';
+const TRACK = '#e9e2d3';
+
+export function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-// Category spend bars: one row per category, sorted by amount spent.
-export function categoryBars(rows) {
-  const max = Math.max(1, ...rows.map((row) => row.spent));
-  return rows
-    .map((row) => {
-      const tone = row.spent > row.budget ? 'red' : row.spent / row.budget > 0.9 ? 'amber' : 'green';
-      return barRow(
-        row.label + ' · ' + formatRupiahShort(row.spent) + ' dari ' + formatRupiahShort(row.budget),
-        formatRupiah(row.spent),
-        row.spent / max,
-        tone,
-      );
+// Horizontal bars: one row per line, with the category name, a track, a
+// filled bar and the amount. Widths are percentages of the largest value,
+// so the longest bar always fills the row.
+export function categoryBars(lines) {
+  const biggest = Math.max(1, ...lines.map((line) => line.spent));
+  const rows = lines
+    .map((line) => {
+      const width = Math.max(2, Math.round((line.spent / biggest) * 100));
+      const colour = line.over ? RUST : GREEN;
+      return `<div class="bar-row">
+  <span class="bar-label">${escapeHtml(line.category)}</span>
+  <span class="bar-track"><span class="bar-fill" style="width:${width}%;background:${colour}"></span></span>
+  <span class="bar-value">${rupiahShort(line.spent)}</span>
+</div>`;
     })
     .join('');
+  return `<div class="bars" role="img" aria-label="Spending by category">${rows}</div>`;
 }
 
-// Monthly trend: paired income/spend columns for each month, with the
-// tallest column setting the scale. Pure divs, labelled under each pair.
-export function monthColumns(months) {
-  const max = Math.max(1, ...months.flatMap((m) => [m.income, m.spend]));
-  const cols = months
-    .map((m) => {
-      const inH = Math.round((m.income / max) * 120);
-      const outH = Math.round((m.spend / max) * 120);
-      return (
-        '<div class="month-col">' +
-        '<div class="month-bars">' +
-        '<div class="month-bar month-in" style="height:' + inH + 'px" title="Pemasukan ' + formatRupiah(m.income) + '"></div>' +
-        '<div class="month-bar month-out" style="height:' + outH + 'px" title="Pengeluaran ' + formatRupiah(m.spend) + '"></div>' +
-        '</div>' +
-        '<div class="month-label">' + m.month + '</div>' +
-        '</div>'
-      );
-    })
-    .join('');
-  return '<div class="month-chart">' + cols + '</div>';
+// A single progress bar: spent against planned, with the percentage and the
+// remaining amount written out beside it, so the bar never stands alone
+// without its numbers.
+export function progressBar({ spent, planned, used, remaining, over }) {
+  const width = Math.min(100, used);
+  const colour = over ? RUST : GREEN;
+  const status = over
+    ? `Over by ${rupiahShort(Math.abs(remaining))}`
+    : `${rupiahShort(remaining)} left`;
+  return `<div class="progress" role="img" aria-label="${used}% of plan used">
+  <span class="progress-track"><span class="progress-fill" style="width:${width}%;background:${colour}"></span></span>
+  <span class="progress-text">${used}% · ${status}</span>
+</div>`;
 }

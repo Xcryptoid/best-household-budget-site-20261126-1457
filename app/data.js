@@ -1,118 +1,74 @@
-// RumahRapi data: one household's real November 2026 figures.
-// Everything here is the site's own content. Spent totals are computed
-// from the transactions below, so the dashboard, budget page and reports
-// can never disagree with each other.
+// RumahRapi's household ledger: one family's November 2026, in rupiah.
+// Every total the site shows is computed from these rows (see money.js), so
+// the figures on the dashboard, the budget bars and the transaction list can
+// never disagree with each other. Amounts are whole rupiah, no cents.
 
 export const HOUSEHOLD = {
   name: 'Keluarga Hartono',
-  members: '2 dewasa + 2 anak',
+  place: 'Jakarta Selatan',
   month: 'November 2026',
+  members: 4,
   currency: 'IDR',
 };
 
-// Monthly income, in rupiah.
-export const INCOME = [
-  { id: 'gaji', label: 'Gaji bulanan', amount: 8400000, date: '2026-11-01' },
-  { id: 'freelance', label: 'Freelance desain', amount: 1200000, date: '2026-11-15' },
+// What the household planned to spend per category this month. The plan
+// totals Rp 14.450.000 against Rp 18.500.000 of income, so the month is
+// planned to end Rp 4.050.000 ahead.
+export const BUDGETS = [
+  { category: 'Groceries', planned: 3000000, note: 'Pasar Minggu + Super Indo, weekly shop' },
+  { category: 'Housing', planned: 4000000, note: 'House rent, paid on the 1st' },
+  { category: 'School', planned: 2000000, note: 'SPP + books for two children' },
+  { category: 'Utilities', planned: 1500000, note: 'Electricity, water, internet' },
+  { category: 'Transport', planned: 1200000, note: 'Fuel, tolls, rides to school' },
+  { category: 'Eating out', planned: 1000000, note: 'One family meal out a week' },
+  { category: 'Fun', planned: 800000, note: 'Cinema, toys, weekend outings' },
+  { category: 'Health', planned: 600000, note: 'Pharmacy and check-ups' },
+  { category: 'Subscriptions', planned: 350000, note: 'Streaming, music, cloud storage' },
 ];
 
-// The 11 budget categories. `budget` is the monthly plan; `kind` tells the
-// budget page how to treat it: "spend" categories are paid from
-// transactions, "save" categories are money set aside, not spent.
-export const CATEGORIES = [
-  { id: 'belanja', label: 'Belanja harian', budget: 2400000, kind: 'spend' },
-  { id: 'transport', label: 'Transport & bensin', budget: 900000, kind: 'spend' },
-  { id: 'listrik', label: 'Listrik & air', budget: 650000, kind: 'spend' },
-  { id: 'internet', label: 'Internet & pulsa', budget: 450000, kind: 'spend' },
-  { id: 'makan', label: 'Makan di luar', budget: 600000, kind: 'spend' },
-  { id: 'pendidikan', label: 'Pendidikan anak', budget: 1200000, kind: 'spend' },
-  { id: 'kesehatan', label: 'Kesehatan', budget: 400000, kind: 'spend' },
-  { id: 'hiburan', label: 'Hiburan & langganan', budget: 350000, kind: 'spend' },
-  { id: 'tabungan', label: 'Tabungan', budget: 1500000, kind: 'save' },
-  { id: 'darurat', label: 'Dana darurat', budget: 500000, kind: 'save' },
-  { id: 'lain', label: 'Lain-lain', budget: 650000, kind: 'spend' },
-];
-
-// Every November expense, newest last. Per-category sums:
-// belanja 1.986.500, transport 742.000, listrik 597.000, internet 450.000,
-// makan 512.000, pendidikan 1.200.000, kesehatan 185.000, hiburan 298.000,
-// lain 214.000 — total belanja Rp 6.184.500.
-export const TRANSACTIONS = [
-  { id: 't01', date: '2026-11-01', label: 'Pasar Minggu — sayur & buah', category: 'belanja', amount: 486500 },
-  { id: 't02', date: '2026-11-01', label: 'Internet rumah', category: 'internet', amount: 350000 },
-  { id: 't03', date: '2026-11-02', label: 'Bensin motor', category: 'transport', amount: 250000 },
-  { id: 't04', date: '2026-11-03', label: 'Token listrik', category: 'listrik', amount: 412000 },
-  { id: 't05', date: '2026-11-04', label: 'Langganan streaming', category: 'hiburan', amount: 149000 },
-  { id: 't06', date: '2026-11-05', label: 'Supermarket — stok mingguan', category: 'belanja', amount: 612000 },
-  { id: 't07', date: '2026-11-05', label: 'SPP anak', category: 'pendidikan', amount: 850000 },
-  { id: 't08', date: '2026-11-06', label: 'Makan keluarga di luar', category: 'makan', amount: 287000 },
-  { id: 't09', date: '2026-11-07', label: 'Pulsa HP', category: 'internet', amount: 100000 },
-  { id: 't10', date: '2026-11-08', label: 'Bensin motor', category: 'transport', amount: 250000 },
-  { id: 't11', date: '2026-11-09', label: 'Pasar Minggu — lauk & bumbu', category: 'belanja', amount: 423000 },
-  { id: 't12', date: '2026-11-10', label: 'PDAM', category: 'listrik', amount: 185000 },
-  { id: 't13', date: '2026-11-11', label: 'Apotek — obat flu', category: 'kesehatan', amount: 185000 },
-  { id: 't14', date: '2026-11-12', label: 'Les privat matematika', category: 'pendidikan', amount: 350000 },
-  { id: 't15', date: '2026-11-13', label: 'Bioskop akhir pekan', category: 'hiburan', amount: 149000 },
-  { id: 't16', date: '2026-11-14', label: 'Tol & parkir', category: 'transport', amount: 142000 },
-  { id: 't17', date: '2026-11-15', label: 'Supermarket — stok mingguan', category: 'belanja', amount: 465000 },
-  { id: 't18', date: '2026-11-16', label: 'Makan siang kantor', category: 'makan', amount: 125000 },
-  { id: 't19', date: '2026-11-18', label: 'Peralatan rumah — lampu & sapu', category: 'lain', amount: 214000 },
-  { id: 't20', date: '2026-11-20', label: 'Ojek online', category: 'transport', amount: 100000 },
-  { id: 't21', date: '2026-11-21', label: 'Kopi & jajan', category: 'makan', amount: 100000 },
-];
-
-// Savings goals, in rupiah.
+// What the household is saving for. "Saved" moves when the +Rp 100.000
+// button on the Goals page is pressed; the bar and the percentage follow it.
 export const GOALS = [
-  { id: 'g1', label: 'Dana darurat', note: 'Target 3× pengeluaran bulanan', target: 18000000, saved: 8400000 },
-  { id: 'g2', label: 'Liburan keluarga', note: 'Yogyakarta, libur sekolah', target: 6000000, saved: 2250000 },
-  { id: 'g3', label: 'Kulkas baru', note: 'Ganti kulkas lama yang bocor', target: 4500000, saved: 3150000 },
+  { id: 'emergency', title: 'Dana darurat', target: 20000000, saved: 12500000, note: 'Six months of essentials, kept in a separate account' },
+  { id: 'holiday', title: 'Liburan keluarga — Yogyakarta', target: 6000000, saved: 4200000, note: 'Train tickets, three nights, Borobudur at sunrise' },
+  { id: 'laptop', title: 'Laptop baru — Ayah', target: 12000000, saved: 3800000, note: 'The old one is eight years old and holds on by a fan' },
 ];
 
-// Recurring bills with their due dates and status.
-export const BILLS = [
-  { id: 'b1', label: 'Listrik PLN', due: '2026-11-20', amount: 412000, paid: true },
-  { id: 'b2', label: 'PDAM', due: '2026-11-15', amount: 185000, paid: true },
-  { id: 'b3', label: 'Internet rumah', due: '2026-12-01', amount: 350000, paid: false },
-  { id: 'b4', label: 'SPP anak', due: '2026-12-05', amount: 850000, paid: false },
-  { id: 'b5', label: 'BPJS Kesehatan', due: '2026-12-10', amount: 280000, paid: false },
-  { id: 'b6', label: 'Asuransi motor', due: '2026-12-18', amount: 325000, paid: false },
-];
+// Last month, for the dashboard's comparison line.
+export const LAST_MONTH = { month: 'October 2026', income: 18500000, spent: 12980000 };
 
-// Past months: income and spending (without savings set aside), for the
-// trend chart on the reports page. November is computed live from the
-// transactions above, so it is never stale.
-export const HISTORY = [
-  { month: 'Jun 2026', income: 9100000, spend: 7850000 },
-  { month: 'Jul 2026', income: 9300000, spend: 8020000 },
-  { month: 'Agu 2026', income: 9600000, spend: 7640000 },
-  { month: 'Sep 2026', income: 9600000, spend: 8310000 },
-  { month: 'Okt 2026', income: 9600000, spend: 7980000 },
-];
-
-// Practical tips, written for a household managing its money.
-export const TIPS = [
-  {
-    title: 'Pakai aturan 50/30/20',
-    body: 'Dari penghasilan Rp 9,6 juta: kebutuhan Rp 4,8 juta, keinginan Rp 2,88 juta, tabungan Rp 1,92 juta. Kalau kebutuhanmu di atas 50%, potong keinginan dulu — bukan tabungan.',
-  },
-  {
-    title: 'Belanja seminggu sekali',
-    body: 'Satu kali belanja mingguan dengan daftar tertulis lebih hemat daripada jajan harian tanpa rencana. Keluarga ini belanja Rp 1.986.500 dari anggaran Rp 2,4 juta bulan ini.',
-  },
-  {
-    title: 'Dana darurat 3–6 bulan pengeluaran',
-    body: 'Pengeluaran keluarga ini sekitar Rp 6,2 juta per bulan, jadi dana darurat idealnya Rp 18–36 juta. Target kami Rp 18 juta dan sudah terkumpul Rp 8,4 juta (47%).',
-  },
-  {
-    title: 'Pisahkan rekening tabungan',
-    body: 'Begitu gajian masuk, pindahkan tabungan Rp 1,5 juta dan dana darurat Rp 500 ribu ke rekening terpisah — otomatis, sebelum sempat terpakai.',
-  },
-  {
-    title: 'Catat pengeluaran kecil',
-    body: 'Kopi, jajan, dan ojek yang masing-masing di bawah Rp 100 ribu bisa bocor Rp 500 ribu sebulan. Catat semuanya di halaman Transaksi — butuh 10 detik saja.',
-  },
-  {
-    title: 'Review 15 menit tiap akhir bulan',
-    body: 'Bandingkan anggaran dan realisasi tiap kategori, lalu sesuaikan anggaran bulan depan. Kategori yang jebol dua bulan berturut-turut berarti anggarannya yang salah, bukan kamu.',
-  },
+// Every transaction of the month, newest last in this file; the site lists
+// them newest first. Two rows are income, the rest are spending. The sums
+// work out to Rp 18.500.000 in and Rp 13.475.000 out, leaving Rp 5.025.000.
+export const TRANSACTIONS = [
+  { id: 't01', date: '2026-11-01', kind: 'income', category: 'Income', description: 'Gaji — PT Nusantara Digital', amount: 15000000 },
+  { id: 't02', date: '2026-11-01', kind: 'expense', category: 'Housing', description: 'Sewa rumah — November', amount: 4000000 },
+  { id: 't03', date: '2026-11-02', kind: 'expense', category: 'Groceries', description: 'Pasar Minggu — sayur, ayam, telur', amount: 420000 },
+  { id: 't04', date: '2026-11-02', kind: 'expense', category: 'Transport', description: 'Bensin — Pertamina', amount: 250000 },
+  { id: 't05', date: '2026-11-03', kind: 'expense', category: 'Eating out', description: 'Makan siang keluarga — warteg', amount: 145000 },
+  { id: 't06', date: '2026-11-04', kind: 'expense', category: 'Utilities', description: 'Listrik PLN', amount: 685000 },
+  { id: 't07', date: '2026-11-05', kind: 'expense', category: 'Groceries', description: 'Super Indo — belanja mingguan', amount: 512000 },
+  { id: 't08', date: '2026-11-06', kind: 'expense', category: 'School', description: 'SPP anak — November', amount: 1750000 },
+  { id: 't09', date: '2026-11-07', kind: 'expense', category: 'Transport', description: 'GoRide — antar anak sekolah', amount: 96000 },
+  { id: 't10', date: '2026-11-08', kind: 'expense', category: 'Fun', description: 'Bioskop — keluarga, 4 tiket', amount: 220000 },
+  { id: 't11', date: '2026-11-09', kind: 'expense', category: 'Groceries', description: 'Pasar Minggu — buah & ikan', amount: 385000 },
+  { id: 't12', date: '2026-11-10', kind: 'expense', category: 'Subscriptions', description: 'Netflix + Spotify', amount: 215000 },
+  { id: 't13', date: '2026-11-11', kind: 'expense', category: 'Eating out', description: 'GoFood — ayam geprek', amount: 128000 },
+  { id: 't14', date: '2026-11-12', kind: 'expense', category: 'Health', description: 'Apotek — vitamin & obat flu', amount: 185000 },
+  { id: 't15', date: '2026-11-13', kind: 'expense', category: 'Transport', description: 'Bensin — Pertamina', amount: 250000 },
+  { id: 't16', date: '2026-11-14', kind: 'income', category: 'Income', description: 'Freelance desain — logo kafe', amount: 3500000 },
+  { id: 't17', date: '2026-11-14', kind: 'expense', category: 'Groceries', description: 'Super Indo — belanja mingguan', amount: 498000 },
+  { id: 't18', date: '2026-11-15', kind: 'expense', category: 'Utilities', description: 'Air PDAM', amount: 320000 },
+  { id: 't19', date: '2026-11-16', kind: 'expense', category: 'Eating out', description: 'Makan malam — resto Sunda', amount: 310000 },
+  { id: 't20', date: '2026-11-17', kind: 'expense', category: 'School', description: 'Buku & alat tulis', amount: 245000 },
+  { id: 't21', date: '2026-11-18', kind: 'expense', category: 'Groceries', description: 'Pasar Minggu — sayur & daging', amount: 455000 },
+  { id: 't22', date: '2026-11-19', kind: 'expense', category: 'Transport', description: 'Tol + parkir', amount: 180000 },
+  { id: 't23', date: '2026-11-20', kind: 'expense', category: 'Fun', description: 'Mainan anak — toko mainan', amount: 150000 },
+  { id: 't24', date: '2026-11-21', kind: 'expense', category: 'Groceries', description: 'Super Indo — belanja mingguan', amount: 530000 },
+  { id: 't25', date: '2026-11-22', kind: 'expense', category: 'Health', description: 'Dokter gigi — kontrol', amount: 350000 },
+  { id: 't26', date: '2026-11-23', kind: 'expense', category: 'Eating out', description: 'GoFood — soto & es teh', amount: 96000 },
+  { id: 't27', date: '2026-11-24', kind: 'expense', category: 'Utilities', description: 'Internet IndiHome', amount: 415000 },
+  { id: 't28', date: '2026-11-25', kind: 'expense', category: 'Groceries', description: 'Pasar Minggu — sayur & buah', amount: 390000 },
+  { id: 't29', date: '2026-11-26', kind: 'expense', category: 'Transport', description: 'Bensin — Pertamina', amount: 250000 },
+  { id: 't30', date: '2026-11-27', kind: 'expense', category: 'Subscriptions', description: 'iCloud 200 GB', amount: 45000 },
 ];
